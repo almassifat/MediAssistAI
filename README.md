@@ -49,8 +49,21 @@ User → Frontend → FastAPI → OCR → Parser → LLM → Response
 
 mediassist_ai/
 ├── backend/
+│ ├── main.py
+│ ├── config.py
+│ ├── models.py
+│ ├── prompts.py
+│ ├── llm_service.py
+│ ├── ocr_service.py
+│ ├── parser_service.py
+│ ├── medical_service.py
+│ └── utils.py
+│
 ├── frontend/
+│ └── app.py
+│
 ├── temp_uploads/
+├── .env
 ├── requirements.txt
 └── README.md
 
@@ -74,11 +87,29 @@ streamlit run frontend/app.py
 
 ---
 
+## 📡 API Endpoints
+POST /analyze-report
+Upload report
+Returns summary + explanation
+POST /ask-report
+Ask questions based on report
+Returns AI response
+
+## 🧪 Testing
+
+Manual test scenarios available in tests.md
+
 ## 👨‍💻 Author
 
 Hasin Almas Sifat
 
 ---
+
+## 📈 Future Improvements
+Advanced NLP parsing
+Better clinical accuracy
+Plotly dashboards
+Multi-report comparison
 
 ## © Copyright
 
