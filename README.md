@@ -43,6 +43,23 @@ The platform allows users to upload medical reports (images or PDFs), automatica
 
 User → Frontend → FastAPI → OCR → Parser → LLM → Response
 
+Pipeline Breakdown
+OCR Layer
+Google Vision API (primary)
+Tesseract fallback
+Preprocessing (grayscale, contrast, sharpening)
+Parser Layer
+Regex-based extraction
+Alias normalization
+Status classification (low / normal / high)
+LLM Layer
+Groq API
+Prompt engineered for safety and clarity
+Avoids hallucination using structured data
+Frontend
+Streamlit UI
+Upload + visualization + chat interface
+
 ---
 
 ## 📁 Project Structure
