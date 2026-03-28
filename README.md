@@ -46,7 +46,6 @@ User → Frontend → FastAPI → OCR → Parser → LLM → Response
 ---
 
 ## 📁 Project Structure
-
 mediassist_ai/
 ├── backend/
 │ ├── main.py
@@ -63,10 +62,9 @@ mediassist_ai/
 │ └── app.py
 │
 ├── temp_uploads/
-├── .env
+├── .env.example
 ├── requirements.txt
 └── README.md
-
 ---
 
 ## ⚙️ Setup
