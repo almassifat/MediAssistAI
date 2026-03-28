@@ -46,25 +46,26 @@ User → Frontend → FastAPI → OCR → Parser → LLM → Response
 ---
 
 ## 📁 Project Structure
+
+```text
 mediassist_ai/
 ├── backend/
-│ ├── main.py
-│ ├── config.py
-│ ├── models.py
-│ ├── prompts.py
-│ ├── llm_service.py
-│ ├── ocr_service.py
-│ ├── parser_service.py
-│ ├── medical_service.py
-│ └── utils.py
-│
+│   ├── main.py
+│   ├── config.py
+│   ├── models.py
+│   ├── prompts.py
+│   ├── llm_service.py
+│   ├── ocr_service.py
+│   ├── parser_service.py
+│   ├── medical_service.py
+│   └── utils.py
 ├── frontend/
-│ └── app.py
-│
+│   └── app.py
 ├── temp_uploads/
-├── .env.example
+├── .env
 ├── requirements.txt
 └── README.md
+```
 ---
 
 ## ⚙️ Setup
