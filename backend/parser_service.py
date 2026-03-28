@@ -1,8 +1,10 @@
 """
 Parser service for MediAssist AI.
 
-Improved version with filtering, better OCR cleanup,
-and more reliable parameter detection.
+Improved version:
+- Preserves OCR line structure
+- Supports aliases like Hb, HGB, WBC Count, Platelets
+- More flexible regex for medical report rows
 """
 
 from __future__ import annotations
@@ -15,58 +17,121 @@ from .models import DetectedParameter
 
 logger = logging.getLogger(__name__)
 
-
-# 🔥 Only allow known medical parameters (very important)
-VALID_TESTS = {
-    "hemoglobin",
-    "rbc",
-    "wbc",
-    "platelet",
-    "neutrophils",
-    "lymphocytes",
-    "monocytes",
-    "eosinophils",
-    "basophils",
-    "hematocrit",
-    "mcv",
-    "mch",
-    "mchc",
+# Canonical names + aliases
+TEST_ALIASES = {
+    "hemoglobin": "Hemoglobin",
+    "haemoglobin": "Hemoglobin",
+    "hb": "Hemoglobin",
+    "hgb": "Hemoglobin",
+    "rbc": "RBC",
+    "rbc count": "RBC",
+    "wbc": "WBC",
+    "wbc count": "WBC",
+    "total wbc count": "WBC",
+    "platelet": "Platelet",
+    "platelets": "Platelet",
+    "platelet count": "Platelet",
+    "neutrophils": "Neutrophils",
+    "lymphocytes": "Lymphocytes",
+    "monocytes": "Monocytes",
+    "eosinophils": "Eosinophils",
+    "basophils": "Basophils",
+    "hematocrit": "Hematocrit",
+    "haematocrit": "Hematocrit",
+    "mcv": "MCV",
+    "mch": "MCH",
+    "mchc": "MCHC",
 }
 
-
-# Improved regex (slightly stricter)
+# Flexible line pattern:
+# Name   Value   optional unit   Low-High
 LINE_PATTERN = re.compile(
-    r"^(?P<name>[A-Za-z][A-Za-z \-/]*)\s+"
-    r"(?P<value>[0-9]+(?:\.[0-9]+)?)\s*"
-    r"(?:\S+)?\s+"
-    r"(?P<low>[0-9]+(?:\.[0-9]+)?)\s*[-–]\s*"
-    r"(?P<high>[0-9]+(?:\.[0-9]+)?)",
-    re.MULTILINE,
+    r"(?P<name>[A-Za-z][A-Za-z .()/\-]*)\s+"
+    r"(?P<value>\d+(?:\.\d+)?)\s*"
+    r"(?:[A-Za-z%/.\d]+)?\s+"
+    r"(?P<low>\d+(?:\.\d+)?)\s*[-–]\s*"
+    r"(?P<high>\d+(?:\.\d+)?)",
+    re.IGNORECASE,
 )
 
 
 def _clean_text(text: str) -> str:
-    """Improve OCR text quality"""
-    text = text.replace("\n", " ")
+    """
+    Clean OCR text while preserving line structure.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[\u00a0\t]+", " ", text)
-    text = re.sub(r"\r\n?", "\n", text)
-    text = re.sub(r" {2,}", " ", text)
-    return text.strip()
+
+    cleaned_lines: list[str] = []
+    for line in text.split("\n"):
+        line = " ".join(line.strip().split())
+        if line:
+            cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines)
+
+
+def _normalize_name(name: str) -> str | None:
+    """
+    Normalize OCR parameter names to canonical names.
+    """
+    name = name.strip().lower()
+    name = re.sub(r"[().]", "", name)
+    name = re.sub(r"\s+", " ", name)
+
+    # direct hit
+    if name in TEST_ALIASES:
+        return TEST_ALIASES[name]
+
+    # partial heuristics
+    if "hemoglobin" in name or name in {"hb", "hgb"}:
+        return "Hemoglobin"
+    if "wbc" in name:
+        return "WBC"
+    if "rbc" in name:
+        return "RBC"
+    if "platelet" in name:
+        return "Platelet"
+    if "neutrophil" in name:
+        return "Neutrophils"
+    if "lymphocyte" in name:
+        return "Lymphocytes"
+    if "monocyte" in name:
+        return "Monocytes"
+    if "eosinophil" in name:
+        return "Eosinophils"
+    if "basophil" in name:
+        return "Basophils"
+    if "hematocrit" in name or "haematocrit" in name:
+        return "Hematocrit"
+    if "mcv" in name:
+        return "MCV"
+    if "mchc" in name:
+        return "MCHC"
+    if "mch" in name:
+        return "MCH"
+
+    return None
 
 
 def parse_report_text(text: str) -> Tuple[str, List[DetectedParameter]]:
-    """Parse OCR text and extract valid medical parameters"""
-
+    """
+    Parse OCR text and extract valid medical parameters.
+    """
     cleaned = _clean_text(text)
-
     parameters: List[DetectedParameter] = []
+    seen: set[tuple[str, str, str]] = set()
 
-    for match in LINE_PATTERN.finditer(cleaned):
-        name = match.group("name").strip().lower()
+    for line in cleaned.split("\n"):
+        match = LINE_PATTERN.search(line)
+        if not match:
+            continue
 
-        # 🔥 FILTER OUT GARBAGE (MOST IMPORTANT FIX)
-        if name not in VALID_TESTS:
-            logger.debug("Skipping unknown parameter: %s", name)
+        raw_name = match.group("name").strip()
+        normalized_name = _normalize_name(raw_name)
+
+        if not normalized_name:
+            logger.debug("Skipping unknown parameter: %s", raw_name)
             continue
 
         value_str = match.group("value")
@@ -78,15 +143,13 @@ def parse_report_text(text: str) -> Tuple[str, List[DetectedParameter]]:
             low = float(low_str)
             high = float(high_str)
         except ValueError:
-            logger.debug("Skipping non-numeric line: %s", match.group(0))
+            logger.debug("Skipping non-numeric line: %s", line)
             continue
 
-        # 🔥 EXTRA SAFETY (avoid OCR nonsense)
         if high < low or value > 1000:
-            logger.debug("Skipping invalid range/value: %s", match.group(0))
+            logger.debug("Skipping invalid range/value: %s", line)
             continue
 
-        # Determine status
         if value < low:
             status = "low"
         elif value > high:
@@ -94,18 +157,23 @@ def parse_report_text(text: str) -> Tuple[str, List[DetectedParameter]]:
         else:
             status = "normal"
 
-        param = DetectedParameter(
-            name=name.capitalize(),
-            value=value_str,
-            reference_range=f"{low_str} - {high_str}",
-            status=status,
+        key = (normalized_name, value_str, f"{low_str}-{high_str}")
+        if key in seen:
+            continue
+        seen.add(key)
+
+        parameters.append(
+            DetectedParameter(
+                name=normalized_name,
+                value=value_str,
+                reference_range=f"{low_str} - {high_str}",
+                status=status,
+            )
         )
 
-        parameters.append(param)
-
         logger.debug(
-            "Detected parameter: %s = %s (%s-%s) → %s",
-            name,
+            "Detected parameter: %s = %s (%s-%s) -> %s",
+            normalized_name,
             value_str,
             low_str,
             high_str,

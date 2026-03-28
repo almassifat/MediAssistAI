@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 
 import pandas as pd
@@ -20,7 +21,6 @@ st.set_page_config(
 # ---------------- CSS ---------------- #
 st.markdown("""
 <style>
-/* Hide Streamlit chrome */
 header[data-testid="stHeader"] {
     background: transparent !important;
     box-shadow: none !important;
@@ -269,6 +269,18 @@ def now_time() -> str:
     return datetime.now().strftime("%I:%M %p")
 
 
+def clean_text(text: str) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("**", "")
+    text = text.replace("###", "")
+    text = text.replace("##", "")
+    text = text.replace("#", "")
+    text = text.replace("&lt;", "<").replace("&gt;", ">")
+    return text.strip()
+
+
 def count_abnormal(items: list[dict]) -> int:
     return sum(1 for item in items if item.get("status") in {"low", "high"})
 
@@ -307,13 +319,16 @@ def plain_language_insights(df: pd.DataFrame) -> list[str]:
         return ["Upload and analyze a report to generate simplified health insights."]
     for _, row in df.iterrows():
         name = str(row.get("name", "Unknown"))
-        value = row.get("value", "")
         ref = str(row.get("reference_range", ""))
         status = str(row.get("status", "")).lower()
         if status == "low":
-            notes.append(f"{name} looks lower than the usual range ({ref}). This may need medical attention depending on symptoms.")
+            notes.append(
+                f"{name} is below the usual range ({ref}). This may need medical attention depending on symptoms."
+            )
         elif status == "high":
-            notes.append(f"{name} looks higher than the usual range ({ref}). This can sometimes signal stress, inflammation, or another medical issue.")
+            notes.append(
+                f"{name} is above the usual range ({ref}). This can sometimes indicate stress, inflammation, or another medical condition."
+            )
         else:
             notes.append(f"{name} appears within the usual range.")
     return notes[:5]
@@ -386,8 +401,8 @@ with tabs[0]:
                     st.error(res.get("explanation", "Analysis failed"))
                 else:
                     st.session_state["report"] = res.get("raw_text")
-                    st.session_state["summary"] = res.get("summary", "")
-                    st.session_state["explanation"] = res.get("explanation", "")
+                    st.session_state["summary"] = clean_text(res.get("summary", ""))
+                    st.session_state["explanation"] = clean_text(res.get("explanation", ""))
                     st.session_state["abnormal_items"] = res.get("abnormal_items", [])
                     st.session_state["lang"] = lang
                     st.success("Analysis complete.")
@@ -399,7 +414,7 @@ with tabs[0]:
         st.markdown("<div class='section-title'>Summary</div>", unsafe_allow_html=True)
 
         if st.session_state["summary"]:
-            st.markdown(st.session_state["summary"])
+            st.markdown(clean_text(st.session_state["summary"]))
         else:
             st.markdown("<div class='small-muted'>A short summary will appear here after analysis.</div>", unsafe_allow_html=True)
 
@@ -414,7 +429,7 @@ with tabs[1]:
         st.markdown("<div class='section-title'>Clinical Explanation</div>", unsafe_allow_html=True)
 
         if st.session_state["explanation"]:
-            st.markdown(st.session_state["explanation"])
+            st.markdown(clean_text(st.session_state["explanation"]))
         else:
             st.markdown("<div class='small-muted'>Detailed explanation will appear here after analysis.</div>", unsafe_allow_html=True)
 
@@ -443,17 +458,17 @@ with tabs[2]:
             unsafe_allow_html=True,
         )
     else:
-        # chat history above
         for message in st.session_state["chat"]:
             avatar = "🧑" if message["role"] == "user" else "🩺"
             with st.chat_message(message["role"], avatar=avatar):
-                st.markdown(message["content"])
+                st.markdown(clean_text(message["content"]))
                 st.caption(message["time"])
 
-        # input at bottom
         user_prompt = st.chat_input("Ask about your report...")
 
         if user_prompt:
+            user_prompt = clean_text(user_prompt)
+
             st.session_state["chat"].append(
                 {"role": "user", "content": user_prompt, "time": now_time()}
             )
@@ -464,13 +479,13 @@ with tabs[2]:
 
             with st.chat_message("assistant", avatar="🩺"):
                 thinking = st.empty()
-                thinking.markdown("Thinking")
+                thinking.markdown("⏳ Thinking...")
                 res = ask_question(
                     st.session_state["report"],
                     user_prompt,
                     st.session_state["lang"],
                 )
-                answer = res.get("answer", "No response available.")
+                answer = clean_text(res.get("answer", "No response available."))
                 thinking.empty()
                 st.markdown(answer)
                 st.caption(now_time())
@@ -492,16 +507,11 @@ with tabs[3]:
         st.markdown("<div class='section-title'>Health Insights Dashboard</div>", unsafe_allow_html=True)
 
         if not df.empty:
-            # clearer chart for general users
             chart_data = df[["name", "value_num"]].set_index("name")
             st.bar_chart(chart_data, use_container_width=True)
-
-            st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
-            st.markdown("**What the chart shows**")
-            st.markdown(
-                "Each bar represents the measured value of a detected report parameter. "
-                "Higher bars do not automatically mean worse health — they simply show bigger numeric values. "
-                "Use the status labels and explanation to understand whether a result is high or low."
+            st.info(
+                "Each bar represents a detected lab value from the report. "
+                "Use the explanation and abnormal status to understand whether the value needs attention."
             )
         else:
             st.markdown("<div class='small-muted'>No chartable values yet.</div>", unsafe_allow_html=True)

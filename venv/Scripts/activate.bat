@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=D:\Cognisor\mediassist_ai_project\mediassist_ai\venv
+set VIRTUAL_ENV=D:\Intern\mediassist_ai_project\mediassist_ai\venv
 
 if not defined PROMPT set PROMPT=$P$G
 
